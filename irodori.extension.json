@@ -7,7 +7,7 @@
   "publisher": "irodori",
   "description": "Trino / Presto Connector contributes the Trino / Presto database connector through the native connector ABI.",
   "license": "MIT OR 0BSD",
-  "repository": "https://github.com/hjosugi/irodori-extension-trino-presto",
+  "repository": "https://github.com/irodori-table/irodori-extension-trino-presto",
   "apiVersion": "0.1",
   "runtime": "native",
   "entry": "dist/native",

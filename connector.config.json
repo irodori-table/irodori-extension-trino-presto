@@ -464,7 +464,7 @@
   },
   "source": {
     "marketplaceId": "irodori.trino-presto",
-    "repository": "https://github.com/hjosugi/irodori-extension-trino-presto",
+    "repository": "https://github.com/irodori-table/irodori-extension-trino-presto",
     "knowledgeEngineStatus": "recognized_no_connector",
     "adapter": null,
     "adapterSha256": null,
