@@ -343,7 +343,13 @@ impl TrinoConfig {
         let user =
             option_string(request, &["user", "username"]).unwrap_or_else(|| "irodori".to_string());
         let password = option_string(request, &["password"]);
-        let bearer_token = option_string(request, &["token", "bearerToken", "accessToken"]);
+        // Trino's JWT authenticator takes the token as a bearer, the same
+        // transport as an opaque access token. Accepting the JWT names lets a
+        // profile say which it holds.
+        let bearer_token = option_string(
+            request,
+            &["token", "bearerToken", "accessToken", "jwt", "jwtToken"],
+        );
         let catalog = option_string(request, &["catalog"]);
         let schema = option_string(request, &["schema", "database", "db"]);
         let tls = TlsConfig::from_request(request);
@@ -801,5 +807,33 @@ mod tests {
         assert!(err.contains("contains no PEM certificate"), "{err}");
 
         std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn a_jwt_is_accepted_under_its_own_option_name() {
+        for field in ["token", "bearerToken", "jwt", "jwtToken"] {
+            let config = TrinoConfig::from_request(&json!({
+                "profile": { "host": "trino.local", "options": { field: "tok-value" } }
+            }))
+            .expect("config");
+            assert_eq!(config.bearer_token.as_deref(), Some("tok-value"), "{field}");
+        }
+    }
+
+    #[test]
+    fn a_bearer_token_wins_over_basic_auth() {
+        // Trino accepts one or the other; sending both would be ambiguous, and
+        // a token is the more specific instruction.
+        let config = TrinoConfig::from_request(&json!({
+            "profile": {
+                "host": "trino.local",
+                "user": "analyst",
+                "password": "pw",
+                "options": { "jwt": "tok" }
+            }
+        }))
+        .expect("config");
+        assert_eq!(config.bearer_token.as_deref(), Some("tok"));
+        assert_eq!(config.password.as_deref(), Some("pw"));
     }
 }
