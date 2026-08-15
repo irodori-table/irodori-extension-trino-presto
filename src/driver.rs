@@ -1,3 +1,6 @@
+use irodori_connector_abi::{
+    collect_url_auth, option_bool, option_string, percent_encode, push_sensitive,
+};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Mutex, OnceLock};
 
@@ -396,11 +399,11 @@ impl OAuth2ClientCredentials {
     async fn fetch_token(&self, client: &Client) -> Result<String, String> {
         let mut body = format!(
             "grant_type=client_credentials&client_id={}&client_secret={}",
-            form_encode(&self.client_id),
-            form_encode(&self.client_secret)
+            percent_encode(&self.client_id),
+            percent_encode(&self.client_secret)
         );
         if let Some(scope) = &self.scope {
-            body.push_str(&format!("&scope={}", form_encode(scope)));
+            body.push_str(&format!("&scope={}", percent_encode(scope)));
         }
         let response = client
             .post(&self.token_endpoint)
@@ -431,19 +434,6 @@ impl OAuth2ClientCredentials {
             })
             .ok_or_else(|| "the OAuth2 token response contained no access_token.".to_string())
     }
-}
-
-fn form_encode(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for byte in value.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(byte as char)
-            }
-            _ => out.push_str(&format!("%{byte:02X}")),
-        }
-    }
-    out
 }
 
 impl TrinoConfig {
@@ -693,7 +683,7 @@ fn string_cell(row: &[Value], index: usize) -> String {
 fn build_url(request: &Value) -> String {
     let host = option_string(request, &["host", "endpoint"]).unwrap_or_else(|| "127.0.0.1".into());
     let port = option_string(request, &["port"]).unwrap_or_else(|| "8080".into());
-    let scheme = if bool_option(request, &["tls", "ssl"]).unwrap_or(false) {
+    let scheme = if option_bool(request, &["tls", "ssl"]).unwrap_or(false) {
         "https"
     } else {
         "http"
@@ -714,83 +704,6 @@ fn connection(connection_id: &str) -> Result<TrinoConnection, IrodoriConnectorBu
             format!("no open connection: {connection_id}"),
         )
     })
-}
-
-fn request_containers(request: &Value) -> Vec<&Value> {
-    [
-        Some(request),
-        request.get("profile"),
-        request.get("options"),
-        request.get("auth"),
-        request.get("secrets"),
-        request
-            .get("profile")
-            .and_then(|profile| profile.get("options")),
-        request
-            .get("profile")
-            .and_then(|profile| profile.get("auth")),
-        request
-            .get("profile")
-            .and_then(|profile| profile.get("secrets")),
-    ]
-    .into_iter()
-    .flatten()
-    .collect()
-}
-
-fn option_string(request: &Value, fields: &[&str]) -> Option<String> {
-    request_containers(request)
-        .into_iter()
-        .find_map(|container| {
-            fields.iter().find_map(|field| {
-                container
-                    .get(*field)
-                    .map(|value| match value {
-                        Value::String(value) => value.clone(),
-                        Value::Number(value) => value.to_string(),
-                        Value::Bool(value) => value.to_string(),
-                        _ => String::new(),
-                    })
-                    .map(|value| value.trim().to_string())
-                    .filter(|value| !value.is_empty())
-            })
-        })
-}
-
-fn bool_option(request: &Value, fields: &[&str]) -> Option<bool> {
-    request_containers(request)
-        .into_iter()
-        .find_map(|container| {
-            fields
-                .iter()
-                .find_map(|field| container.get(*field).and_then(Value::as_bool))
-        })
-}
-
-fn push_sensitive(values: &mut Vec<String>, value: Option<&str>) {
-    if let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) {
-        if !values.iter().any(|existing| existing == value) {
-            values.push(value.to_string());
-        }
-    }
-}
-
-fn collect_url_auth(url: &str, values: &mut Vec<String>) {
-    let Some(after_scheme) = url.split_once("://").map(|(_, rest)| rest) else {
-        return;
-    };
-    let Some(auth) = after_scheme
-        .split('/')
-        .next()
-        .and_then(|host| host.split('@').next())
-    else {
-        return;
-    };
-    if auth.contains(':') {
-        for part in auth.split(':') {
-            push_sensitive(values, Some(part));
-        }
-    }
 }
 
 #[cfg(test)]
@@ -1012,7 +925,7 @@ mod tests {
     fn grant_bodies_are_form_encoded() {
         // A client secret containing `&` must not be able to introduce another
         // parameter.
-        assert_eq!(form_encode("a&b=c"), "a%26b%3Dc");
-        assert_eq!(form_encode("plain-Secret_1.0~"), "plain-Secret_1.0~");
+        assert_eq!(percent_encode("a&b=c"), "a%26b%3Dc");
+        assert_eq!(percent_encode("plain-Secret_1.0~"), "plain-Secret_1.0~");
     }
 }
